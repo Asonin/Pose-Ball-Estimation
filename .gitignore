@@ -15,10 +15,10 @@ sdkLog/
 /Calibrate.o
 /calibrate.py
 /calibrate.sh
-/cam_0_extrinsic.npz
-/cam_1_extrinsic.npz
-/cam_2_extrinsic.npz
-/cam_3_extrinsic.npz
+cam_0_extrinsic.npz
+cam_1_extrinsic.npz
+cam_2_extrinsic.npz
+cam_3_extrinsic.npz
 /CapPicture.o
 /clear.sh
 /ConfigParams.o
