@@ -1,6 +1,6 @@
-# 2D-detection For AIPE Basketball
+# POSE_BALL_ESTIMATION
 
-> Given a set of  images or a video, detect the position of basketballs appearing in the scene.
+> Given a set of images or a video, detect the position of basketballs appearing in the scene.
 >
 > Based on a model trained with YOLOv5.
 
@@ -8,36 +8,30 @@
 
 ## Installation
 
-Just install the packages in {requirements.txt}.
-
-
-
-## Data Preparation
-
-The data should be kept in a folder, placed at your project directory
-
-See this is quite chill, you only need to make sure that the files you need to run are in one folder.
+Just install the packages in {requirements.txt} and probably a bit more of .
 
 
 
 ## Run Code
 
-Just simply run the detect.py
+Just simply run the run/_inference.py_
 
-`python detect.py --source {path/to/files/to_be_detected} --conf-thres {set threshold}`
+e.g.
+
+>  `python run/inference.py --sequence=your_prefix --scene=your_config --weights route/to/the/weights_file --extrinsics_path route/to/your/extrinsic_paths --device choose_available_devices`
 
 To modified your own run, you shall modify few arguments:
 
 | arg_name     | value                                 | description                                                  |
 | ------------ | ------------------------------------- | ------------------------------------------------------------ |
 | --weights    | path/to/your/own/model                | You may use your own model, but the default model is good enough probably ^_^. |
-| --source     | path/to/your/own/files                | No need to say nothing.                                      |
-| --output     | to/your/own/output/path               | No need to say nothing.                                      |
+| --sequence     | path/to/your/own/files                | No need to say nothing.                                      |
+| --output     | to/your/own/output/output_path               | No need to say nothing.                                      |
 | --conf-thres | (0,1)                                 | Object confidence threshold. The default value is 0.5, you shall change the value to your own need. |
 | --device     | cuda device, i.e. 0 or 0,1,2,3 or cpu | Devices used to run inference.                               |
-| --iou-thres  | (0,1)                                 | The threshold of merging two boxes to one. The default value is 0.5, you shall change the value to your own need. |
+| --extrensics_path  | path/to/the/camera_extrinsics                                 | the camera extrinsics |
 
-Then, you should be able to see the code running in your terminal and showing detecting information. Done inferencing, the results are saved at the  `inference/output/{your/path}`.
+Then, you should be able to see the code running in your terminal and showing detecting information. Done inferencing, the results are saved at the  `../output/{your/path}`.
 
 You shall see two files in the folder discussed above:
 
