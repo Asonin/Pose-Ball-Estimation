@@ -10,6 +10,7 @@ import yaml
 import argparse
 import numpy as np
 from tqdm import tqdm
+from cmath import sqrt
 
 import _init_paths
 
@@ -26,7 +27,49 @@ from pose_estimator.utils.vis import save_3d_images, save_image_with_projected_b
 # modules for tracker
 from tracker.multitracker import JDETracker
 
-
+def slide_window(recon_list):
+    # print(recon_list)
+    # you shall set the threshold here
+    threshold = 100
+    length = len(recon_list)
+    # print('length = %d' % length)
+    dele = []
+    cnt = 0
+    dictlist = []
+    for key, value in recon_list.items():
+        temp = (key,value)
+        dictlist.append(temp)
+        # print(dictlist)
+    print(dictlist)
+    for i in range(2,length-2):
+        cur = dictlist[i]
+        pre2 = dictlist[i-2]
+        pre1 = dictlist[i-1]
+        po2 = dictlist[i+2]
+        po1 = dictlist[i+1]
+        # print(cur)
+        # print(cur.shape)
+        # print(type(cur[0]))
+        distpre = sqrt((pre2[1][0]-pre1[1][0])**2 + (pre2[1][1]-pre1[1][1])**2 + (pre2[1][2]-pre1[1][2])**2)
+        dist1 = sqrt((pre1[1][0]-cur[1][0])**2 + (pre1[1][1]-cur[1][1])**2 + (cur[1][2]-pre1[1][2])**2)
+        offset1 = abs(distpre - dist1)
+        distpo = sqrt((po2[1][0]-po1[1][0])**2 + (po2[1][1]-po1[1][1])**2 + (po2[1][2]-po1[1][2])**2)
+        dist2 = sqrt((cur[1][0]-po1[1][0])**2 + (cur[1][1]-po1[1][1])**2 + (cur[1][2]-po1[1][2])**2)
+        offset2 = abs(distpo - dist2)
+        
+        if offset1 > threshold and offset2 > threshold:
+            print('offset2 = %s, offset1 = %s, '% (offset2, offset1,))
+            if cur[0] not in dele:
+                dele.append(cur[0])
+                print("deleting one point")
+                print(cnt)
+                cnt+=1
+    for i in dele:
+        recon_list.pop(i)
+    # print(recon_list)
+    return recon_list
+        
+    
 def within(idx, n_frames):
     for i in range(len(idx)):
         if idx[i] >= n_frames[i]:
@@ -129,6 +172,8 @@ def cap_pics(matches, all_frames, camera_ids, resize_transform, transform):
 
     # enumerate over all aligned frames
     for fid in range(num_frames):
+        if fid > 1000:
+            break
         img_list = []
         pose_img_list = []
 
@@ -197,7 +242,9 @@ def cap_pics(matches, all_frames, camera_ids, resize_transform, transform):
     frameid = 0
     ball_pos = []
     # we insert a window filter to clean the outlier
-    res = recon_list
+    print("into slide_window")
+    res = slide_window(recon_list)
+    # res = recon_list
     # print("--------------------------------")
     # print(res.keys())
     # res_3d = np.array(res)

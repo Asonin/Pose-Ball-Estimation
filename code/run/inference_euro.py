@@ -10,6 +10,8 @@ import yaml
 import argparse
 import numpy as np
 from tqdm import tqdm
+from cmath import sqrt
+import math
 
 import _init_paths
 
@@ -26,7 +28,120 @@ from pose_estimator.utils.vis import save_3d_images, save_image_with_projected_b
 # modules for tracker
 from tracker.multitracker import JDETracker
 
+def smoothing_factor(t_e, cutoff):
+    t_e = np.array(t_e)
+    r = 2 * math.pi * cutoff * t_e
+    return r / (r + 1)
 
+
+def exponential_smoothing(a, x, x_prev):
+    a = np.array(a)
+    x = np.array(x)
+    x_prev = np.array(x_prev)
+    return a * x + (1 - a) * x_prev
+
+
+class OneEuroFilter:
+    def __init__(self, t0, x0, dx0=(0.0,0.0,0.0), min_cutoff=1.0, beta=0.0,
+                 d_cutoff=1.0):
+        """Initialize the one euro filter."""
+        # The parameters.
+        self.min_cutoff = float(min_cutoff)
+        self.beta = float(beta)
+        self.d_cutoff = float(d_cutoff)
+        # Previous values.
+        self.x_prev = x0
+        self.dx_prev = dx0
+        self.t_prev = t0
+
+    def __call__(self, t, x):
+        """Compute the filtered signal."""
+        t_e = t - self.t_prev
+
+        # The filtered derivative of the signal.
+        a_d = smoothing_factor(t_e, self.d_cutoff)
+        dx = (x - self.x_prev) / t_e
+        dx_hat = exponential_smoothing(a_d, dx, self.dx_prev)
+
+        # The filtered signal.
+        cutoff = self.min_cutoff + self.beta * abs(dx_hat)
+        a = smoothing_factor(t_e, cutoff)
+        x_hat = exponential_smoothing(a, x, self.x_prev)
+
+        # Memorize the previous values.
+        self.x_prev = x_hat
+        self.dx_prev = dx_hat
+        self.t_prev = t
+
+        return x_hat
+
+
+def slide_window(recon_list):
+    # print(recon_list)
+    # you shall set the threshold here
+    threshold = 100
+    length = len(recon_list)
+    # print('length = %d' % length)
+    dele = []
+    cnt = 0
+    dictlist = []
+    for key, value in recon_list.items():
+        temp = (key,value)
+        dictlist.append(temp)
+        # print(dictlist)
+    print(dictlist)
+    for i in range(2,length-2):
+        cur = dictlist[i]
+        pre2 = dictlist[i-2]
+        pre1 = dictlist[i-1]
+        po2 = dictlist[i+2]
+        po1 = dictlist[i+1]
+        # print(cur)
+        # print(cur.shape)
+        # print(type(cur[0]))
+        distpre = sqrt((pre2[1][0]-pre1[1][0])**2 + (pre2[1][1]-pre1[1][1])**2 + (pre2[1][2]-pre1[1][2])**2)
+        dist1 = sqrt((pre1[1][0]-cur[1][0])**2 + (pre1[1][1]-cur[1][1])**2 + (cur[1][2]-pre1[1][2])**2)
+        offset1 = abs(distpre - dist1)
+        distpo = sqrt((po2[1][0]-po1[1][0])**2 + (po2[1][1]-po1[1][1])**2 + (po2[1][2]-po1[1][2])**2)
+        dist2 = sqrt((cur[1][0]-po1[1][0])**2 + (cur[1][1]-po1[1][1])**2 + (cur[1][2]-po1[1][2])**2)
+        offset2 = abs(distpo - dist2)
+        
+        if offset1 > threshold and offset2 > threshold:
+            print('offset2 = %s, offset1 = %s, '% (offset2, offset1,))
+            if cur[0] not in dele:
+                dele.append(cur[0])
+                print("deleting one point")
+                print(cnt)
+                cnt+=1
+    for i in dele:
+        recon_list.pop(i)
+        pass
+    
+    # go through one euro filter
+    print("into one-euro-filter mode")
+    dictlist = []
+    for key, value in recon_list.items():
+        temp = [key,value]
+        dictlist.append(temp)
+
+    #Fc and beta
+    min_cutoff = 1
+    beta = 0
+    length = len(dictlist)
+    x_hat = np.zeros((length,3),dtype=np.float)
+    x_hat[0] = dictlist[0][1]
+    one_euro_filter = OneEuroFilter(dictlist[0][0], dictlist[0][1],min_cutoff=min_cutoff,beta=beta)
+    for i in range(1, length):
+        x_hat[i] = one_euro_filter(dictlist[i][0], dictlist[i][1])
+        print("ori: %s,%s,%s; filtered:%s,%s,%s" % (dictlist[i][1][0],dictlist[i][1][1],dictlist[i][1][2],x_hat[i][0],x_hat[i][1],x_hat[i][2]))
+    
+    for i in range(length):
+        dictlist[i][1] = x_hat[i]
+    new_recon = dict(dictlist)
+    # print(recon_list)
+    return new_recon
+        
+    
 def within(idx, n_frames):
     for i in range(len(idx)):
         if idx[i] >= n_frames[i]:
@@ -123,12 +238,14 @@ def cap_pics(matches, all_frames, camera_ids, resize_transform, transform):
 
     recon_list = {}
     all_poses = {}
-    output_dir_pose = '../output/wusi/voxelpose_50/' + args.sequence
+    output_dir_pose = '../output/wusi/voxelpose_50/' + args.sequence + '_euro_tst'
 
     tracker = JDETracker(frame_rate=25)
 
     # enumerate over all aligned frames
     for fid in range(num_frames):
+        if fid > 1000:
+            break
         img_list = []
         pose_img_list = []
 
@@ -173,6 +290,8 @@ def cap_pics(matches, all_frames, camera_ids, resize_transform, transform):
              tid = t.track_id
              online_joints.append(coord)
              online_ids.append(tid)
+        
+        print("online ids goes like:")
         print(fid, pred.shape[0], online_ids)
         
         # visualization
@@ -197,7 +316,9 @@ def cap_pics(matches, all_frames, camera_ids, resize_transform, transform):
     frameid = 0
     ball_pos = []
     # we insert a window filter to clean the outlier
-    res = recon_list
+    print("into slide_window")
+    res = slide_window(recon_list)
+    # res = recon_list
     # print("--------------------------------")
     # print(res.keys())
     # res_3d = np.array(res)

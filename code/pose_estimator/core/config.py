@@ -140,7 +140,7 @@ config.CAPTURE_SPEC.SPACE_SIZE = np.array([4000.0, 5200.0, 2400.0])
 config.CAPTURE_SPEC.SPACE_CENTER = np.array([300.0, 300.0, 300.0])
 config.CAPTURE_SPEC.VOXELS_PER_AXIS = np.array([24, 32, 16])
 config.CAPTURE_SPEC.MAX_PEOPLE = 10
-config.CAPTURE_SPEC.MIN_SCORE = 0.1
+config.CAPTURE_SPEC.MIN_SCORE = 0.6
 
 # specification of each individual
 config.INDIVIDUAL_SPEC = edict()
