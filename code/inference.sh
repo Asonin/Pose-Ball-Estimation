@@ -1,3 +1,3 @@
 # python run/inference.py --sequence=team0817_3 --scene=wusi --extrinsics_path ../dataset/new_extrinsics --device 0,1,2,3 --conf-thres=0.4
 # python run/inference_euro_pose.py --sequence=team0817_2 --scene=wusi --extrinsics_path ../dataset/new_extrinsics --device 4,5,6,7 --conf-thres=0.4
-python run/inference_euro_pose.py --sequence=team0817_1 --scene=wusi --extrinsics_path ../dataset/new_extrinsics --device 0,1,2,3 --conf-thres=0.4
+python run/inference_final.py --sequence=team0817_1 --scene=wusi --extrinsics_path ../dataset/new_extrinsics --device 0,1,2,3 --conf-thres=0.4
