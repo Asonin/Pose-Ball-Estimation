@@ -1,3 +1,4 @@
+from bdb import Breakpoint
 from datetime import datetime
 from genericpath import exists
 from tqdm import tqdm
@@ -119,11 +120,22 @@ def cap_pics(matches, all_frames, camera_ids, resize_transform, transform):
     output_dir_pose = f'../output/{args.scene}/voxelpose_50/{args.sequence}_final'
 
     tracker = JDETracker(frame_rate=25)
-    flag = True
+    flag = True # filter instance flag
+    break_flag = False
+    if args.breakpoint == -1:
+        print("no breakpoints, inferencing the whole set")
+    else:
+        break_flag = True
+        print(f"the breakpoint's at {args.breakpoint}")
+        
     # enumerate over all aligned frames
     for fid in range(num_frames):
-        if fid > 100:
-            break
+        # for tests, set breakpoints
+        if break_flag:
+            if fid > break_flag:
+                print(f"ending inference at fid = {fid}")
+                break
+        
         img_list = []
         pose_img_list = []
 
@@ -141,14 +153,17 @@ def cap_pics(matches, all_frames, camera_ids, resize_transform, transform):
         pose_img_list = torch.stack(pose_img_list, dim=0).unsqueeze(0)
 
         recon = estimate_ball_3d(x, img_list, cameras, args, model_ball, device)
-        # print("recon goes like")
-        # print(recon)
+        
+        # for tests, probably print out the recon to see its shape and value
+        # print(f"recon goes like \n {recon}")
         if recon is not None:
             recon_list[fid] = recon
         
         poses = estimate_pose_3d(model_pose, pose_img_list, meta, our_cameras, resize_transform_tensor)
         poses = poses[:,poses[0,:,0,4]>=config.CAPTURE_SPEC.MIN_SCORE,:,:]
 
+        
+        # for tests, probably print out the poses to see its shape and value
         # print("poses for this frame goes like:")
         # print(poses)
         # print("poses shape be like:")
@@ -173,6 +188,8 @@ def cap_pics(matches, all_frames, camera_ids, resize_transform, transform):
              tid = t.track_id
              online_joints.append(coord)
              online_ids.append(tid)
+             
+        # for tests, probably print out the joints after tracking to see its shape and value
         # print("online joints goes like:")
         # print(online_joints)
         # print("online joints shape goes like:")
@@ -256,6 +273,7 @@ if __name__ == '__main__':
     parser.add_argument('--weights', nargs='+', type=str, default='models/ball_model_best.pt',
                         help='model.pt path(s)')
     parser.add_argument('--sequence', type=str, default='20220427_ball_01')
+    parser.add_argument('--breakpoint', type=int, default='-1')
     parser.add_argument('--scene', type=str, default='wusi')
     parser.add_argument('--extrinsics_path', type=str,
                         default='../../dataset/extrinsics')
