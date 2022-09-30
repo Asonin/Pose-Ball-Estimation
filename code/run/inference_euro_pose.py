@@ -331,12 +331,18 @@ def cap_pics(matches, all_frames, camera_ids, resize_transform, transform):
             recon_list[fid] = recon
         
         poses = estimate_pose_3d(model_pose, pose_img_list, meta, our_cameras, resize_transform_tensor)
+        
+        print("poses for this frame goes like:")
+        print(poses)
+        print("poses shape be like:")
+        print(poses.shape)
+        
         poses = poses[:,poses[0,:,0,4]>=config.CAPTURE_SPEC.MIN_SCORE,:,:]
 
-        # print("poses for this frame goes like:")
-        # print(poses)
-        # print("poses shape be like:")
-        # print(poses.shape)
+        print("poses for this frame goes like:")
+        print(poses)
+        print("poses shape be like:")
+        print(poses.shape)
         all_poses[fid] = poses
         pbar.update(1)
 

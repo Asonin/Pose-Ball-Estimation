@@ -1,4 +1,5 @@
 from cmath import sqrt
+from operator import truediv
 
 import numpy as np
 import math
@@ -102,18 +103,19 @@ class OneEuroFilterPose(OneEuroFilter):
             self.x_prev[id] = x_hat
             self.dx_prev[id] = dx_hat
             self.t_prev[id] = t
-            print("ori: %s,%s,%s; filtered:%s,%s,%s" % (x[i][2][0],x[i][2][1],x[i][2][2],x_hat[0],x_hat[1],x_hat[2]))
+            # print("ori: %s,%s,%s; filtered:%s,%s,%s" % (x[i][2][0],x[i][2][1],x[i][2][2],x_hat[0],x_hat[1],x_hat[2]))
             offset = x_hat - x[i][2]
-            print("offset = %s,%s,%s" % (offset[0], offset[1], offset[2]))
+            # print("offset = %s,%s,%s" % (offset[0], offset[1], offset[2]))
             for j in range(15):
                 x[i][j] = x[i][j] + offset
 
         return x
 
 
-def slide_window(recon_list):
+def slide_window(recon_list, pose_recon_list):
     # you shall set the threshold here, it determines the distance for a burst
-    threshold = 100
+    threshold_ball = 100
+    threshold_pose = 100
 
     length = len(recon_list)
     dele = []
@@ -124,6 +126,7 @@ def slide_window(recon_list):
         dictlist.append(temp)
     
     # a slide window in the size of 5
+    print("into slide window for ball")
     for i in range(2,length-2):
         cur = dictlist[i]
         pre2 = dictlist[i-2]
@@ -138,13 +141,134 @@ def slide_window(recon_list):
         offset2 = abs(distpo - dist2)
         
         # a burst
-        if offset1 > threshold and offset2 > threshold:
+        if offset1 > threshold_ball and offset2 > threshold_ball:
             print('offset2 = %s, offset1 = %s, '% (offset2, offset1,))
             if cur[0] not in dele:
                 dele.append(cur[0])
                 cnt+=1
     for i in dele:
         recon_list.pop(i)
+        pose_recon_list.pop(i)
+    print("done slide window for ball")
+    
+    
+    print("into slide window for pose")
+    length = len(pose_recon_list)
+    dele = []
+    cnt = 0 # counting the deleted points
+    dictlist = []
+    for key, value in pose_recon_list.items():
+        temp = (key,value) # key is frameid and value is (ids, poses)
+        dictlist.append(temp)
+    # print("dictlist goes like : \n{}".format(np.array(dictlist).shape))
+    #initialize post and pre poses
+    
+    
+    
+    # for i in range(5):
+    #     if i == 2:
+    #         continue
+    #     ids = dictlist[i][1][0]
+    #     print("ids goes like {}".format(ids))
+    #     poses = dictlist[i][1][1]
+    #     print("poses for this frame looks like {}".format(np.array(poses).shape))
+    #     for j in range(len(ids)):
+    #         id = ids[j]
+    #         if i == 0:
+    #             pose_prev2[id] = poses[j][2]
+    #         elif i == 1:
+    #             pose_prev1[id] = poses[j][2]
+    #         elif i == 3:
+    #             pose_post1[id] = poses[j][2]
+    #         elif i == 4:
+    #             pose_post2[id] = poses[j][2]
+        
+    # a slide window in the size of 5
+    for i in range(4,length-4):
+        print(f"now the id is {i}")
+        pose_prev4 = {}
+        pose_post4 = {}
+        pose_prev2 = {}
+        pose_prev1 = {}
+        pose_post1 = {}
+        pose_post2 = {}
+        # print("cleared cache\n")
+        
+        ids_prev4 = dictlist[i - 4][1][0]
+        ids_post4 = dictlist[i + 4][1][0]
+        # pose_prev4 = dictlist[i - 4][1][1]
+        for j in range(4):
+            if j == 0:
+                t = -2
+                ids_prev2 = dictlist[i + t][1][0]
+            elif j == 1:
+                t = -1
+                ids_prev1 = dictlist[i + t][1][0]
+            elif j == 2:
+                t = 1
+                ids_post1 = dictlist[i + t][1][0]
+            else:
+                t = 2
+                ids_post2 = dictlist[i + t][1][0]
+        # if True:
+            ids_compare = dictlist[i + t][1][0]
+            pose_compare = dictlist[i + t][1][1]
+            # print(f"now the j is {j}")
+            # print(f"pose compare goes like {np.array(pose_compare).shape}")
+            # print(f"ids_compare goes like {ids_compare}")
+            
+            for k in range(len(pose_compare)):
+                id = ids_compare[k]
+                if j == 0:
+                    pose_prev2[id] = pose_compare[k][2]
+                elif j == 1:
+                    pose_prev1[id] = pose_compare[k][2]
+                elif j == 2:
+                    pose_post1[id] = pose_compare[k][2]
+                elif j == 3:
+                    pose_post2[id] = pose_compare[k][2]
+        
+        
+        frameid = dictlist[i][0]
+        ids = dictlist[i][1][0]
+        cur_poses = dictlist[i][1][1]
+        
+        for j in ids: # delete a pop-up
+            if j not in ids_prev4 and j not in ids_post4:
+            # if j not in ids_post1 and j not in ids_post2 and j not in ids_prev1 and j not in ids_prev2:
+                dele.append(frameid)
+                
+        for j in range(len(ids)): # length of ids
+            id = ids[j]
+            if id not in ids_post1 or id not in ids_post2 or id not in ids_prev1 or id not in ids_prev2:
+                continue # not suitable for a slide window yet
+            # id = ids[j]
+            pose = cur_poses[j][2]
+            pre2 = pose_prev2[id]
+            pre1 = pose_prev1[id]
+            po2 = pose_post1[id]
+            po1 = pose_post1[id]
+            
+            distpre = sqrt((pre2[0]-pre1[0])**2 + (pre2[1]-pre1[1])**2 + (pre2[2]-pre1[2])**2)
+            dist1 = sqrt((pre1[0]-pose[0])**2 + (pre1[1]-pose[1])**2 + (pose[2]-pre1[2])**2)
+            offset1 = abs(distpre - dist1)
+            distpo = sqrt((po2[0]-po1[0])**2 + (po2[1]-po1[1])**2 + (po2[2]-po1[2])**2)
+            dist2 = sqrt((pose[0]-po1[0])**2 + (pose[1]-po1[1])**2 + (pose[2]-po1[2])**2)
+            offset2 = abs(distpo - dist2)
+            # print(f"offset1 = {offset1}, offset2 = {offset2}")
+            # a burst
+            if offset1 > threshold_pose and offset2 > threshold_pose:
+                print('offset2 = %s, offset1 = %s, '% (offset2, offset1,))
+                if frameid not in dele:
+                    dele.append(frameid)
+                    cnt+=1
+            
+            
+    for i in dele:
+        recon_list.pop(i)
+        pose_recon_list.pop(i)
+    
+    
     
     # go through one euro filter
     print("into one-euro-filter for ball")
@@ -168,4 +292,4 @@ def slide_window(recon_list):
     for i in range(length):
         dictlist[i][1] = x_hat[i]
     new_recon = dict(dictlist)
-    return new_recon
+    return new_recon, pose_recon_list

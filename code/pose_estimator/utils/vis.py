@@ -239,7 +239,7 @@ def save_2d_planes(config, meta, final_poses, poses, proposal_centers, prefix):
     plt.savefig(file_name)
     plt.close(0)
 
-
+        
 def save_image_with_projected_ball_and_poses(config, images, ball_pos, poses, meta, prefix, cameras, transform, colorid):
     basename = os.path.basename(prefix)
     dirname = os.path.join(os.path.dirname(prefix), 'image_with_projected_ball_and_poses')
@@ -249,14 +249,18 @@ def save_image_with_projected_ball_and_poses(config, images, ball_pos, poses, me
 
     batch_size, num_views, _, height, width = images.shape
     max_people = poses.shape[1]
-    num_joints = poses.shape[2]
+    if max_people == 0:
+        num_joints = 0
+    else:
+        num_joints = poses.shape[2]
     
     for c in range(num_views):
         file_name = prefix + '_view_{}.jpg'.format(c + 1)
         batch_image = images[:, c].flip(1)
         grid = torchvision.utils.make_grid(batch_image, 1, padding=0, normalize=True)
         ndarr = grid.mul(255).clamp(0, 255).byte().permute(1, 2, 0).cpu().numpy().copy()
-        limbs = eval("LIMBS{}".format(num_joints))
+        if num_joints != 0:
+            limbs = eval("LIMBS{}".format(num_joints))
 
         for i in range(batch_size):
             curr_seq = meta['seq'][i]
@@ -305,7 +309,7 @@ def save_image_with_projected_ball_and_poses(config, images, ball_pos, poses, me
 
 
 def save_3d_images(config, ball_pos, poses, prefix, colorid):
-    basename = os.path.basename(prefix)
+    basename = os.path.basename(prefix) # file name 
     dirname = os.path.dirname(prefix)
     dirname1 = os.path.join(dirname, '3d_vis')
 

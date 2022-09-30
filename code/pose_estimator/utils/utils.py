@@ -214,6 +214,8 @@ def get_cam(cam_file, seq):
     
     cameras_int_key = {}
     for id, cam in cameras.items():
+        # if id == '3':
+        #    break
         cameras_int_key[int(id)] = cam
 
     our_cameras = dict()

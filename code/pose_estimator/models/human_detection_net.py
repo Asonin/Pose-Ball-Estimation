@@ -78,10 +78,12 @@ class HumanDetectionNet(nn.Module):
         num_joints = heatmaps.shape[2]
 
         # construct feature cubes
-        feature_cubes = self.project_layer(heatmaps, meta, cameras, resize_transform)                                           
+        # print(meta, cameras, resize_transform)
+        feature_cubes = self.project_layer(heatmaps, meta, cameras, resize_transform)                                         
 
         # generate 2d proposals
         proposal_heatmaps_2d, bbox_preds = self.center_net(feature_cubes)
+        # print(torch.max(feature_cubes[0]), torch.max(proposal_heatmaps_2d[0]))
         topk_2d_confs, topk_2d_index, topk_2d_flatten_index = nms2D(proposal_heatmaps_2d.detach(), self.max_people) 
         
         # extract the matched bbox predictions

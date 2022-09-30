@@ -138,11 +138,18 @@ def cap_pics(matches, all_frames, camera_ids, resize_transform, transform):
             img_list.append(img)
 
             # require extra transformation for poee estimation
+            # pose_img = cv2.warpAffine(img, resize_transform, (int(image_size[0]), 
+            #                           int(image_size[1])), flags=cv2.INTER_LINEAR)
+            # pose_img = cv2.cvtColor(pose_img, cv2.COLOR_BGR2RGB)
+            # pose_img = transform(pose_img)
+            # pose_img_list.append(pose_img)
+            
             pose_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             pose_img = cv2.warpAffine(pose_img, resize_transform, (int(image_size[0]), 
                                       int(image_size[1])), flags=cv2.INTER_LINEAR)
             pose_img = transform(pose_img)
             pose_img_list.append(pose_img)
+            
         pose_img_list = torch.stack(pose_img_list, dim=0).unsqueeze(0)
 
         recon = estimate_ball_3d(x, img_list, cameras, args, model_ball, device)
@@ -152,7 +159,7 @@ def cap_pics(matches, all_frames, camera_ids, resize_transform, transform):
             recon_list[fid] = recon
         
         poses = estimate_pose_3d(model_pose, pose_img_list, meta, our_cameras, resize_transform_tensor)
-        poses = poses[:,poses[0,:,0,4]>=config.CAPTURE_SPEC.MIN_SCORE,:,:]
+        # poses = poses[:,poses[0,:,0,4]>=config.CAPTURE_SPEC.MIN_SCORE,:,:]
         all_poses[fid] = poses
         pbar.update(1)
 
@@ -173,7 +180,7 @@ def cap_pics(matches, all_frames, camera_ids, resize_transform, transform):
              tid = t.track_id
              online_joints.append(coord)
              online_ids.append(tid)
-        print(fid, pred.shape[0], online_ids)
+        # print(fid, pred.shape[0], online_ids)
         
         # visualization
         prefix = '{}_{:08}'.format(os.path.join(output_dir_pose, 'test'), fid)
@@ -301,6 +308,7 @@ if __name__ == '__main__':
 
     cam_file = '../data/calibration_wusi.json'
     our_cameras = get_cam(cam_file, args.sequence)
+
     meta = {'seq': [args.sequence]}
     resize_transform, transform = get_transform(config)
     resize_transform_tensor = torch.tensor(resize_transform, dtype=torch.float, device=device)

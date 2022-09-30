@@ -117,13 +117,13 @@ def cap_pics(matches, all_frames, camera_ids, resize_transform, transform):
 
     recon_list = {}
     pose_recon_list = {}
-    output_dir_pose = f'../output/{args.scene}/voxelpose_50/{args.sequence}_final'
+    output_dir_pose = f'../output/{args.scene}/voxelpose_50/{args.sequence}_filtered'
 
     tracker = JDETracker(frame_rate=25)
     flag = True # filter instance flag
     break_flag = False
     if args.breakpoint == -1:
-        print("no breakpoints, inferencing the whole sequence")
+        print("no breakpoints, inferencing the whole set")
     else:
         break_flag = True
         print(f"the breakpoint's at {args.breakpoint}")
@@ -159,7 +159,13 @@ def cap_pics(matches, all_frames, camera_ids, resize_transform, transform):
         
         
         poses = estimate_pose_3d(model_pose, pose_img_list, meta, our_cameras, resize_transform_tensor)
+        # print("poses for this frame goes like:")
+        # print(poses)
+        # print("poses shape be like:")
+        # print(poses.shape)
+        
         poses = poses[:,poses[0,:,0,4]>=config.CAPTURE_SPEC.MIN_SCORE,:,:]
+
         # for tests, probably print out the poses to see its shape and value
         # print("poses for this frame goes like:")
         # print(poses)

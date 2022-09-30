@@ -31,6 +31,7 @@ class VoxelPoseNet(nn.Module):
         if views is not None:
             num_views = views.shape[1]
             input_heatmaps = torch.stack([self.backbone(views[:, c]) for c in range(num_views)], dim=1)
+        # print(torch.max(input_heatmaps[0]), torch.max(views[0]))
         batch_size = input_heatmaps.shape[0]
  
         # human detection network
