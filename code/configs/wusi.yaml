@@ -6,7 +6,7 @@ CUDNN:
 BACKBONE: 'resnet'
 MODEL: 'voxelpose'
 DATA_DIR: ''
-GPUS: '2'
+GPUS: '0'
 OUTPUT_DIR: 'output'
 LOG_DIR: 'log'
 WORKERS: 4

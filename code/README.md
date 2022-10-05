@@ -28,9 +28,9 @@ To modified your own run, you shall modify few arguments:
 | --sequence     | path/to/your/own/files                | No need to say nothing.                                      |
 | --output     | to/your/own/output/output_path               | No need to say nothing.                                      |
 | --conf-thres | (0,1)                                 | Object confidence threshold. The default value is 0.5, you shall change the value to your own need. |
-| --device     | cuda device, i.e. 0 or 0,1,2,3 or cpu | Devices used to run inference.                               |
+| --device     | cuda device, i.e. 0 or 0,1,2,3 or cpu | Devices used to run, currently only supporting single GPU inference.                               |
 | --extrensics_path  | path/to/the/camera_extrinsics                                 | the camera extrinsics |
-
+| --num_people | [1,10] | number of people showing up in the sequence, determines the detection results| 
 Then, you should be able to see the code running in your terminal and showing detecting information. Done inferencing, the results are saved at the  `../output/{your/path}`.
 
 You shall see two files in the folder discussed above:

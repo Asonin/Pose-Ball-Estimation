@@ -41,7 +41,7 @@ def read_and_match_timestamps(camera_ids):
     n_frames = []
 
     for i, cam_id in enumerate(camera_ids):
-        df = pd.read_csv('../data/%s/%s.csv' % (args.sequence, cam_id), sep=',', header=None)
+        df = pd.read_csv('../out/%s/%s.csv' % (args.sequence, cam_id), sep=',', header=None)
         cam_log = df.values
         t = []
         dt = []
@@ -89,7 +89,7 @@ def read_and_match_timestamps(camera_ids):
     # quit()
     # print("its my code")
     # print(matches)
-    # f = open(f'../data/{args.sequence}/mine.txt', 'w', encoding='utf-8')
+    # f = open(f'../out/{args.sequence}/mine.txt', 'w', encoding='utf-8')
     # f.write(str(matches.tolist()))
     # f.close()
     # print("-----------------------------\n")
@@ -102,7 +102,7 @@ def read_and_match_timestamps(camera_ids):
     for cam_id in camera_ids:
         frame_num = 0
         all_frames[cam_id] = {}
-        videocap = cv2.VideoCapture('../data/%s/%s.mp4' % (args.sequence, cam_id))
+        videocap = cv2.VideoCapture('../out/%s/%s.mp4' % (args.sequence, cam_id))
         while (videocap.isOpened()):
             ret, frame = videocap.read()
             if not ret:
@@ -129,6 +129,8 @@ def cap_pics(matches, all_frames, camera_ids, resize_transform, transform):
 
     # enumerate over all aligned frames
     for fid in range(num_frames):
+        # if fid > 50:
+            # break
         img_list = []
         pose_img_list = []
 
@@ -193,7 +195,7 @@ def cap_pics(matches, all_frames, camera_ids, resize_transform, transform):
     rr, jac0 = cv2.Rodrigues(cameras[visualize]["r"])
     tvec = -np.matmul(cameras[visualize]["r"], cameras[visualize]["t"])
     # Project 3D points to the original video.
-    video_path = f"../data/{args.sequence}/1.mp4"
+    video_path = f"../out/{args.sequence}/1.mp4"
     cap = cv2.VideoCapture(video_path)
     out_path = f'./output/wusi/ball'
     if not os.path.exists(out_path):

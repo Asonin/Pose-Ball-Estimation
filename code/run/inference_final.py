@@ -30,7 +30,7 @@ from pose_estimator.utils.vis import save_3d_images, save_image_with_projected_b
 from tracker.multitracker import JDETracker
 
 # modules for one-euro filter
-from one_euro_filter.filter import slide_window, OneEuroFilterPose
+from one_euro_filter.filter import OneEuroFilter, slide_window, OneEuroFilterPose, do_interpolation
         
     
 def within(idx, n_frames):
@@ -47,7 +47,7 @@ def read_and_match_timestamps(camera_ids):
     n_frames = []
 
     for i, cam_id in enumerate(camera_ids):
-        df = pd.read_csv('../data/%s/%s.csv' % (args.sequence, cam_id), sep=',', header=None)
+        df = pd.read_csv('../out/%s/%s.csv' % (args.sequence, cam_id), sep=',', header=None)
         cam_log = df.values
         t = []
         dt = []
@@ -96,7 +96,7 @@ def read_and_match_timestamps(camera_ids):
     for cam_id in camera_ids:
         frame_num = 0
         all_frames[cam_id] = {}
-        videocap = cv2.VideoCapture('../data/%s/%s.mp4' % (args.sequence, cam_id))
+        videocap = cv2.VideoCapture('../out/%s/%s.mp4' % (args.sequence, cam_id))
         while (videocap.isOpened()):
             ret, frame = videocap.read()
             if not ret:
@@ -117,7 +117,7 @@ def cap_pics(matches, all_frames, camera_ids, resize_transform, transform):
 
     recon_list = {}
     pose_recon_list = {}
-    output_dir_pose = f'../output/{args.scene}/voxelpose_50/{args.sequence}_final'
+    output_dir_pose = f'../output/{args.scene}/voxelpose_50/{args.sequence}_final_with_inter'
 
     tracker = JDETracker(frame_rate=25)
     flag = True # filter instance flag
@@ -165,7 +165,7 @@ def cap_pics(matches, all_frames, camera_ids, resize_transform, transform):
         # print(poses)
         # print("poses shape be like:")
         # print(poses.shape)
-        pbar.update(1)
+        
 
         # pose tracking
         pred = poses.copy()[0]
@@ -184,7 +184,7 @@ def cap_pics(matches, all_frames, camera_ids, resize_transform, transform):
              tid = t.track_id
              online_joints.append(coord)
              online_ids.append(tid)
-             
+        
         # for tests, probably print out the joints after tracking to see its shape and value
         # print("online joints goes like:")
         # print(online_joints)
@@ -193,42 +193,34 @@ def cap_pics(matches, all_frames, camera_ids, resize_transform, transform):
         # print("online ids goes like:")
         # print(fid, pred.shape[0], online_ids)
         
-        if flag:
-            #Fc and beta for pose filter
+        if flag and recon is not None:
+            #Fc and beta for one euro filter, currently using the same arguments
             min_cutoff = 1
             beta = 0
             flag = False
+            one_euro_filter = OneEuroFilter(fid, np.array(recon), min_cutoff=min_cutoff, beta=beta)
             one_euro_filter_pose = OneEuroFilterPose(fid, np.array(online_joints), online_ids, min_cutoff=min_cutoff,beta=beta)
         else:
-            online_joints = one_euro_filter_pose(fid, np.array(online_joints), online_ids)
+            if recon is not None:
+                recon = one_euro_filter(fid, np.array(recon))
+                online_joints = one_euro_filter_pose(fid, np.array(online_joints), online_ids)
         
-        # only save the results when there are both ball and poses
-        if recon is not None and online_ids is not None:
+        # only save the results when there are both ball and full-size poses
+        if recon is not None and len(online_ids) == args.num_people:
             recon_list[fid] = recon
             pose_recon_list[fid] = [online_ids, online_joints]
-        
-        # visualization
-        prefix = '{}_{:08}'.format(os.path.join(output_dir_pose, 'test'), fid)
-        #this is for unfiltered poses and ball detection
-        # save_3d_images(config, recon, online_joints, prefix, online_ids)
-        # save_image_with_projected_ball_and_poses(config, pose_img_list, recon, np.expand_dims(np.array(online_joints), 0), meta, prefix, our_cameras, resize_transform, online_ids)
-    
+        pbar.update(1)    
 
     # we insert a window filter to clean the outlier
-    print("into slide_window for ball_detection")
     recon_list, pose_recon_list = slide_window(recon_list, pose_recon_list)
+    recon_list, pose_recon_list = do_interpolation(recon_list, pose_recon_list)
     
-    # save the filtered images altogether
-    # save_3d_images_all_together(config, recon_list, pose_recon_list, output_dir_pose, num_frames)
     prev_id = 0
     threshold_group = 10
     group_id = 0
     cnt = 0
-    fps = 25
-    split_threshold = fps * 4
     output_dir_pose_group = output_dir_pose + '/' + str(group_id)
-    prefix = '{}_{:08}'.format(os.path.join(output_dir_pose_group, 'test'), cnt)
-    
+
     for i in range(num_frames):
         # cnt = cnt + 1
         img_list = []
@@ -247,21 +239,21 @@ def cap_pics(matches, all_frames, camera_ids, resize_transform, transform):
             pose_img_list.append(pose_img)
         pose_img_list = torch.stack(pose_img_list, dim=0).unsqueeze(0)
         
-        # see if this frame is in recon_list, do the saving process
+        # see if this frame is in recon_list, save image
         if i in recon_list.keys():
-            if i - prev_id > threshold_group or cnt > split_threshold:
-                # to a new folder
+            offset = i - prev_id
+            prev_id = i
+            if offset >= threshold_group: # to a new folder
                 print(f"prev_id = {prev_id}, i = {i}")
                 group_id = group_id + 1
                 cnt = 0
                 output_dir_pose_group = output_dir_pose + '/' + str(group_id)
-                
-                # prefix = '{}_{:08}'.format(os.path.join(output_dir_pose_group, 'test'), i)
-            # else:
-            prev_id = i
+            
             prefix = '{}_{:08}'.format(os.path.join(output_dir_pose_group, 'test'), cnt)
             # if not os.path.exists(prefix):
             #     os.makedirs(prefix)
+            # print('--------------')
+            # print(pose_recon_list[i])
             save_3d_images(config, recon_list[i], pose_recon_list[i][1], prefix, pose_recon_list[i][0])
             save_image_with_projected_ball_and_poses(config, pose_img_list, recon_list[i], np.expand_dims(np.array(pose_recon_list[i][1]), 0), meta, prefix, our_cameras, resize_transform, pose_recon_list[i][0])
             cnt = cnt + 1
@@ -328,6 +320,7 @@ if __name__ == '__main__':
                         help='model.pt path(s)')
     parser.add_argument('--sequence', type=str, default='20220427_ball_01')
     parser.add_argument('--breakpoint', type=int, default='-1')
+    parser.add_argument('--num_people', type=int, default='5')
     parser.add_argument('--scene', type=str, default='wusi')
     parser.add_argument('--extrinsics_path', type=str,
                         default='../../dataset/extrinsics')
@@ -343,6 +336,7 @@ if __name__ == '__main__':
     parser.add_argument('--agnostic-nms', action='store_true', help='class-agnostic NMS')
     parser.add_argument('--augment', action='store_true', help='augmented inference')
     parser.add_argument('--update', action='store_true', help='update all models')
+    
     args = parser.parse_args()
 
     # read configuration file
