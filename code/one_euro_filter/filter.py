@@ -37,8 +37,8 @@ class OneEuroFilter:
 
         # The filtered derivative of the signal.
         a_d = smoothing_factor(t_e, self.d_cutoff)
-        print(x)
-        print(self.x_prev)
+        # print(x)
+        # print(self.x_prev)
         dx = (x - self.x_prev) / t_e
         dx_hat = exponential_smoothing(a_d, dx, self.dx_prev)
 
@@ -118,7 +118,7 @@ class OneEuroFilterPose(OneEuroFilter):
 
 
 def do_interpolation(recon_list, pose_list):
-    
+    print("into interpolation")
     recon_list = dict(recon_list)
     pose_list = dict(pose_list)
     recon = {}
@@ -135,7 +135,7 @@ def do_interpolation(recon_list, pose_list):
         tmp = dict(zip(tmp[0],tmp[1]))
         tmp = dict(sorted(tmp.items(), key = lambda x:x[0]))
         pose0 = [list(tmp.keys()), list(tmp.values())]
-        print(pose0[0])
+        # print(pose0[0])
         pose[key] = pose0
         
         if t == 0:
@@ -145,12 +145,12 @@ def do_interpolation(recon_list, pose_list):
         # key1 = int(key1)
         # key = int(key)
         offset = key1 - key
-        print(f"offset for index is {offset}")
+        # print(f"offset for index is {offset}")
         tmp1 = pose_list[key1]
         tmp1 = dict(zip(tmp1[0],tmp1[1]))
         tmp1 = dict(sorted(tmp1.items(), key = lambda x:x[0])) 
         pose1 = [list(tmp1.keys()), list(tmp1.values())]
-        print(pose1[0])
+        # print(pose1[0])
         
         if offset >= 10 or offset == 1:
             recon[key1] = recon_list[key1]
@@ -187,8 +187,8 @@ def do_interpolation(recon_list, pose_list):
 
 def slide_window(recon_list, pose_recon_list):
     # you shall set the threshold here, it determines the distance for a burst
-    threshold_ball = 100
-    threshold_pose = 100
+    threshold_ball = 500
+    threshold_pose = 400
 
     length = len(recon_list)
     dele = []
@@ -202,36 +202,44 @@ def slide_window(recon_list, pose_recon_list):
     # print(len(pose_recon_list))
     # a slide window in the size of 5
     print("into slide window for ball")
-    for i in range(2,length-2):
+    for i in range(1,length-1):
         cur = dictlist[i]
-        pre2 = dictlist[i-2]
+        # pre2 = dictlist[i-2]
         pre1 = dictlist[i-1]
-        po2 = dictlist[i+2]
+        # po2 = dictlist[i+2]
         po1 = dictlist[i+1]
-        distpre = sqrt((pre2[1][0]-pre1[1][0])**2 + (pre2[1][1]-pre1[1][1])**2 + (pre2[1][2]-pre1[1][2])**2)
-        dist1 = sqrt((pre1[1][0]-cur[1][0])**2 + (pre1[1][1]-cur[1][1])**2 + (cur[1][2]-pre1[1][2])**2)
-        offset1 = abs(distpre - dist1)
-        distpo = sqrt((po2[1][0]-po1[1][0])**2 + (po2[1][1]-po1[1][1])**2 + (po2[1][2]-po1[1][2])**2)
-        dist2 = sqrt((cur[1][0]-po1[1][0])**2 + (cur[1][1]-po1[1][1])**2 + (cur[1][2]-po1[1][2])**2)
-        offset2 = abs(distpo - dist2)
+        mid = (np.array(pre1[1]) + np.array(po1[1]))/2
+        dist1 = abs(sqrt((mid[0]-cur[1][0])**2 + (mid[1]-cur[1][1])**2 + (mid[2]-cur[1][2])**2))
+        
+        # distpre = sqrt((pre2[1][0]-pre1[1][0])**2 + (pre2[1][1]-pre1[1][1])**2 + (pre2[1][2]-pre1[1][2])**2)
+        # dist1 = abs(sqrt((pre1[1][0]-cur[1][0])**2 + (pre1[1][1]-cur[1][1])**2 + (cur[1][2]-pre1[1][2])**2))
+        print(dist1)
+        # offset1 = abs(distpre - dist1)
+        # distpo = sqrt((po2[1][0]-po1[1][0])**2 + (po2[1][1]-po1[1][1])**2 + (po2[1][2]-po1[1][2])**2)
+        # dist2 = sqrt((cur[1][0]-po1[1][0])**2 + (cur[1][1]-po1[1][1])**2 + (cur[1][2]-po1[1][2])**2)
+        # offset2 = abs(distpo - dist2)
         
         # a burst
-        if offset1 > threshold_ball and offset2 > threshold_ball:
-            # print('offset2 = %s, offset1 = %s, '% (offset2, offset1,))
+        if int(dist1) > threshold_ball:
             if cur[0] not in dele:
                 dele.append(cur[0])
                 cnt+=1
-    for i in dele:
-        recon_list.pop(i)
-        pose_recon_list.pop(i)
+        # if offset1 > threshold_ball and offset2 > threshold_ball:
+        #     # print('offset2 = %s, offset1 = %s, '% (offset2, offset1,))
+        #     if cur[0] not in dele:
+        #         dele.append(cur[0])
+        #         cnt+=1
+    # for i in dele:
+    #     recon_list.pop(i)
+    #     pose_recon_list.pop(i)
     print(f'deleted {cnt} frames')
     print("done slide window for ball")
     
     
     print("into slide window for pose")
     length = len(pose_recon_list)
-    dele = []
-    cnt = 0 # counting the deleted points
+    # dele = []
+    # cnt = 0 # counting the deleted points
     dictlist = []
     for key, value in pose_recon_list.items():
         temp = (key,value) # key is frameid and value is (ids, poses)
@@ -301,26 +309,31 @@ def slide_window(recon_list, pose_recon_list):
                 flag = True
                 break
         if flag:
-            dele.append(frameid)
+            # dele.append(frameid)
             continue
         
         for j in range(len(ids)): # length of ids
             id = ids[j]
             pose = cur_poses[j][2]
-            pre2 = pose_prev2[id]
+            # pre2 = pose_prev2[id]
             pre1 = pose_prev1[id]
-            po2 = pose_post1[id]
+            # po2 = pose_post1[id]
             po1 = pose_post1[id]
             
-            distpre = sqrt((pre2[0]-pre1[0])**2 + (pre2[1]-pre1[1])**2 + (pre2[2]-pre1[2])**2)
-            dist1 = sqrt((pre1[0]-pose[0])**2 + (pre1[1]-pose[1])**2 + (pose[2]-pre1[2])**2)
-            offset1 = abs(distpre - dist1)
-            distpo = sqrt((po2[0]-po1[0])**2 + (po2[1]-po1[1])**2 + (po2[2]-po1[2])**2)
-            dist2 = sqrt((pose[0]-po1[0])**2 + (pose[1]-po1[1])**2 + (pose[2]-po1[2])**2)
-            offset2 = abs(distpo - dist2)
+            mid = (np.array(po1) + np.array(pre1))/2
+            dist1 = abs(sqrt((mid[0]-pose[0])**2 + (mid[1]-pose[1])**2 + (mid[2]-pre1[2])**2))
+            
+            # distpre = sqrt((pre2[0]-pre1[0])**2 + (pre2[1]-pre1[1])**2 + (pre2[2]-pre1[2])**2)
+            # dist1 = abs(sqrt((pre1[0]-pose[0])**2 + (pre1[1]-pose[1])**2 + (pose[2]-pre1[2])**2))
+            print(dist1)
+            # offset1 = abs(distpre - dist1)
+            # distpo = sqrt((po2[0]-po1[0])**2 + (po2[1]-po1[1])**2 + (po2[2]-po1[2])**2)
+            # dist2 = sqrt((pose[0]-po1[0])**2 + (pose[1]-po1[1])**2 + (pose[2]-po1[2])**2)
+            # offset2 = abs(distpo - dist2)
             # print(f"offset1 = {offset1}, offset2 = {offset2}")
             # a burst
-            if offset1 > threshold_pose and offset2 > threshold_pose:
+            if int(dist1) > threshold_pose: 
+            # if offset1 > threshold_pose and offset2 > threshold_pose:
                 # print('offset2 = %s, offset1 = %s, '% (offset2, offset1,))
                 if frameid not in dele:
                     dele.append(frameid)

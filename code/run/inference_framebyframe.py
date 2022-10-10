@@ -3,8 +3,11 @@ from datetime import datetime
 from genericpath import exists
 from tqdm import tqdm
 from cmath import sqrt
+from os import path
 
 import numpy as np
+import os
+import shutil
 import torch
 import cv2
 import pandas as pd
@@ -15,6 +18,7 @@ import argparse
 import numpy as np
 import math
 import _init_paths
+import ffmpeg
 
 # modules for ball detection
 from ball_detector.models.experimental import attempt_load
@@ -32,16 +36,96 @@ from tracker.multitracker import JDETracker
 # modules for one-euro filter
 from one_euro_filter.filter import OneEuroFilter, slide_window, OneEuroFilterPose, do_interpolation
         
+
+class Reader():
+    def __init__(self, camera_ids, matches, aligned_len, image_size, resize_transform, transform):
+        self.resize_transform = resize_transform
+        self.transform = transform
+        self.image_size = image_size
+        self.frame_num = {}
+        self.aligned_len = aligned_len
+        self.videocap = {}
+        self.camera_ids = camera_ids
+        self.matches = matches
+        self.prev = {} # save at most five pics
+        self.prev_id = {}
+        self.flag = False
+        for cam_id in camera_ids:
+            self.prev_id[cam_id] = []
+            self.frame_num[cam_id] = 0
+            self.prev[cam_id] = {}
+            self.videocap[cam_id] = cv2.VideoCapture('../out/%s/%s.mp4' % (args.sequence, cam_id))
     
+    def __call__(self, fid):
+        img_list = []
+        pose_img_list = []
+        
+        for k, cam_id in enumerate(self.camera_ids):
+            ori_fid = self.matches[fid, k]
+            # if cam_id == 10:
+            #     print(f"ori_fid = {ori_fid}")
+            while(1):
+            # while(self.frame_num[cam_id] != ori_fid):
+                # if cam_id == 10:
+                #     print(f"now the id is {self.frame_num[cam_id]}")
+                if not self.videocap[cam_id].isOpened():
+                    print(f"cideo_cap {cam_id} closed")
+                    break
+                ret, frame = self.videocap[cam_id].read()
+                if not ret:
+                    print("at the end of the video_file")
+                    self.flag = True
+                    break
+                
+                self.frame_num[cam_id] += 1
+                cur_id = self.frame_num[cam_id]
+                 
+                if cur_id > ori_fid: 
+                    # print(f"using past frame of cam{cam_id} at {cur_id}")
+                    # print(f"ori_fid = {ori_fid}")
+                    img_list.append(self.prev[cam_id][ori_fid])
+                    pose_img = cv2.cvtColor(self.prev[cam_id][ori_fid], cv2.COLOR_BGR2RGB)
+                    
+                elif cur_id == ori_fid:
+                    img_list.append(frame)
+                    pose_img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                
+                self.prev[cam_id][cur_id] = frame
+                self.prev_id[cam_id].append(cur_id)
+                # print(self.prev_id[cam_id])
+                if len(self.prev_id[cam_id]) == 10:
+                    self.prev[cam_id].pop(self.prev_id[cam_id][0])
+                    del self.prev_id[cam_id][0]
+                
+                if cur_id < ori_fid: # not found yet
+                    continue
+                    
+                # require extra transformation for poee estimation
+                pose_img = cv2.warpAffine(pose_img, self.resize_transform, (int(self.image_size[0]), 
+                                        int(self.image_size[1])), flags=cv2.INTER_LINEAR)
+                pose_img = self.transform(pose_img)
+                pose_img_list.append(pose_img)
+                break
+                         
+        pose_img_list = torch.stack(pose_img_list, dim=0).unsqueeze(0)
+        
+        return img_list, pose_img_list, self.flag 
+    
+    def __del__(self):
+        for key, value in self.videocap.items():
+            print(f"videocap{key} released")
+            value.release()
+            
+         
 def within(idx, n_frames):
     for i in range(len(idx)):
         if idx[i] >= n_frames[i]:
             return False
     return True
 
-
-def read_and_match_timestamps(camera_ids):
-    print(camera_ids)
+    
+def match_timestamps(camera_ids):
+    
     num_cams = len(camera_ids)
     ts = []
     dts = []
@@ -50,17 +134,19 @@ def read_and_match_timestamps(camera_ids):
     for i, cam_id in enumerate(camera_ids):
         df = pd.read_csv('../out/%s/%s.csv' % (args.sequence, cam_id), sep=',', header=None)
         cam_log = df.values
-        t = []
+        t = [] # timestamp
         dt = []
         for idx, row in enumerate(cam_log):
             if idx <= 1:
                 continue
             t.append(int(row[2]))
+            #specific time
             y, mo, d, h, mi, s, ms = int(row[3]), int(row[4]), int(row[5]), int(row[6]), \
                                      int(row[7]), int(row[8]), int(row[9])
             dt.append(datetime(y, mo, d, h, mi, s, ms * 1000).timestamp())  # milisecond to microsecond
         frames = len(dt)
         dts.append(np.array(dt))
+        
         ts.append(np.array(t))
         print("Cam %s Done, %d frames." % (cam_id, frames))
         n_frames.append(frames)
@@ -69,15 +155,17 @@ def read_and_match_timestamps(camera_ids):
     idx = []
     start = [dts[x][51] for x in range(num_cams)]
     lff = max(start)  # Get the latest first frame.
-    ref = np.argmax(start)
+    ref = np.argmax(start) # get the index for the greatest
     # get starting point
     for i in range(num_cams):
         idx.append(np.argmin(abs(dts[i] - lff)))
-    idx = np.array(idx)
-
+    idx = np.array(idx) # get starting_index for all the cameras
     matches = []
-    while within(idx, n_frames):
+    
+    while within(idx, n_frames): # not crossing the bounds
         for i in range(num_cams):
+            # print(i)
+            # print(ref)
             while within(idx + 1, n_frames) and (
                     abs(dts[i][idx[i] + 1] - dts[ref][idx[ref]]) < abs(dts[i][idx[i]] - dts[ref][idx[ref]])):
                 idx[i] += 1
@@ -88,47 +176,51 @@ def read_and_match_timestamps(camera_ids):
         idx += 1
 
     matches = np.array(matches)
+    # cnt = 0
+    # prev = matches[0]
+    # for i in matches:
+    #     if cnt == 0:
+    #         cnt += 1
+    #         continue
+    #     cnt += 1
+    #     for j in range(11):
+    #         if prev[j] > i[j]:
+    #             print("wtf")
+    #             print(prev)
+    #             print(i)
+    #     prev = i
+    #     if cnt > 100:
+    #         break
+    # print(matches)
     aligned_len = len(matches)
     print("Matched sequence length: %d" % aligned_len)
+    
+    return matches
 
 
+def cap_pic(matches, camera_ids, resize_transform, transform):
     # Read time-aligned frames
-    all_frames = {}
-    for cam_id in camera_ids:
-        frame_num = 0
-        all_frames[cam_id] = {}
-        videocap = cv2.VideoCapture('../out/%s/%s.mp4' % (args.sequence, cam_id))
-        while (videocap.isOpened()):
-            ret, frame = videocap.read()
-            if not ret:
-                break
-            frame_num += 1
-            all_frames[cam_id][frame_num] = frame
-        
-        videocap.release()
-        print("Cam %s Done." % (cam_id))
-
-    return matches, all_frames
-
-
-def cap_pics(matches, all_frames, camera_ids, resize_transform, transform):
     num_frames = len(matches)
     image_size = config.NETWORK.IMAGE_SIZE
-    pbar = tqdm(total=num_frames)
-
-    recon_list = {}
-    pose_recon_list = {}
-    output_dir_pose = f'../output/{args.scene}/voxelpose_50/{args.sequence}_final_with_inter'
-
-    tracker = JDETracker(frame_rate=25)
-    flag = True # filter instance flag
+    reader = Reader(camera_ids, matches, num_frames, image_size, resize_transform, transform)
     break_flag = False
+    
     if args.breakpoint == -1:
         print("no breakpoints, inferencing the whole sequence")
+        pbar = tqdm(total=num_frames)
     else:
         break_flag = True
         print(f"the breakpoint's at {args.breakpoint}")
-        
+        pbar = tqdm(total=args.breakpoint)
+
+    recon_list = {}
+    pose_recon_list = {}
+    output_dir_pose = f'../output/{args.scene}/{args.sequence}'
+
+    tracker = JDETracker(frame_rate=25)
+    flag = True # filter instance flag
+    
+    
     # enumerate over all aligned frames
     for fid in range(num_frames):
         # for tests, set breakpoints
@@ -137,27 +229,14 @@ def cap_pics(matches, all_frames, camera_ids, resize_transform, transform):
                 print(f"ending inference at fid = {fid}")
                 break
         
-        img_list = []
-        pose_img_list = []
-
-        for k, cam_id in enumerate(camera_ids):
-            ori_fid = matches[fid, k]
-            img = all_frames[cam_id][ori_fid]
-            img_list.append(img)
-
-            # require extra transformation for poee estimation
-            pose_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            pose_img = cv2.warpAffine(pose_img, resize_transform, (int(image_size[0]), 
-                                      int(image_size[1])), flags=cv2.INTER_LINEAR)
-            pose_img = transform(pose_img)
-            pose_img_list.append(pose_img)
-        pose_img_list = torch.stack(pose_img_list, dim=0).unsqueeze(0)
-
+        img_list, pose_img_list, eof_flag = reader(fid)
+        if eof_flag:
+            print(f"at the end of video, ending at {fid}")
+            break
+        # print(len(img_list))
         recon = estimate_ball_3d(x, img_list, cameras, args, model_ball, device)
-        
         # for tests, probably print out the recon to see its shape and value
         # print(f"recon goes like \n {recon}")
-        
         
         poses = estimate_pose_3d(model_pose, pose_img_list, meta, our_cameras, resize_transform_tensor)
         poses = poses[:,poses[0,:,0,4]>=config.CAPTURE_SPEC.MIN_SCORE,:,:]
@@ -167,7 +246,6 @@ def cap_pics(matches, all_frames, camera_ids, resize_transform, transform):
         # print("poses shape be like:")
         # print(poses.shape)
         
-
         # pose tracking
         pred = poses.copy()[0]
         # print(pred[:, 0, 3], pred[:, 0, 4])
@@ -185,7 +263,6 @@ def cap_pics(matches, all_frames, camera_ids, resize_transform, transform):
              tid = t.track_id
              online_joints.append(coord)
              online_ids.append(tid)
-        
         # for tests, probably print out the joints after tracking to see its shape and value
         # print("online joints goes like:")
         # print(online_joints)
@@ -210,8 +287,18 @@ def cap_pics(matches, all_frames, camera_ids, resize_transform, transform):
         if recon is not None and len(online_ids) == args.num_people:
             recon_list[fid] = recon
             pose_recon_list[fid] = [online_ids, online_joints]
-        pbar.update(1)    
-
+        pbar.update(1)
+            
+    reader.__del__()
+    if args.breakpoint == -1:
+        break_flag == False
+        print("no breakpoints, saving the whole sequence")
+        pbar = tqdm(total=num_frames)
+    else:
+        break_flag = True
+        print(f"the breakpoint's at {args.breakpoint}")
+        pbar = tqdm(total=args.breakpoint)
+        
     # we insert a window filter to clean the outlier
     recon_list, pose_recon_list = slide_window(recon_list, pose_recon_list)
     recon_list, pose_recon_list = do_interpolation(recon_list, pose_recon_list)
@@ -221,25 +308,19 @@ def cap_pics(matches, all_frames, camera_ids, resize_transform, transform):
     group_id = 0
     cnt = 0
     output_dir_pose_group = output_dir_pose + '/' + str(group_id)
-
+    reader = Reader(camera_ids, matches, num_frames, image_size, resize_transform, transform)
+    print("into saving process")
+    
     for i in range(num_frames):
-        # cnt = cnt + 1
-        img_list = []
-        pose_img_list = []
-
-        for k, cam_id in enumerate(camera_ids):
-            ori_fid = matches[fid, k]
-            img = all_frames[cam_id][ori_fid]
-            img_list.append(img)
-
-            # require extra transformation for poee estimation
-            pose_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            pose_img = cv2.warpAffine(pose_img, resize_transform, (int(image_size[0]), 
-                                      int(image_size[1])), flags=cv2.INTER_LINEAR)
-            pose_img = transform(pose_img)
-            pose_img_list.append(pose_img)
-        pose_img_list = torch.stack(pose_img_list, dim=0).unsqueeze(0)
-        
+        if break_flag:
+            if i > args.breakpoint:
+                print(f"ending inference at fid = {fid}")
+                break
+            
+        img_list, pose_img_list, flag = reader(i)
+        if flag:
+            print(f"at the end of video, ending at {fid}")
+            break
         # see if this frame is in recon_list, save image
         if i in recon_list.keys():
             offset = i - prev_id
@@ -257,62 +338,59 @@ def cap_pics(matches, all_frames, camera_ids, resize_transform, transform):
             # print(pose_recon_list[i])
             save_3d_images(config, recon_list[i], pose_recon_list[i][1], prefix, pose_recon_list[i][0])
             save_image_with_projected_ball_and_poses(config, pose_img_list, recon_list[i], np.expand_dims(np.array(pose_recon_list[i][1]), 0), meta, prefix, our_cameras, resize_transform, pose_recon_list[i][0])
-            cnt = cnt + 1
+            cnt = cnt + 1  
+        pbar.update(1)  
+    reader.__del__()
+ 
+ 
+def postprocess():
+    sequence = args.sequence
+
+    dir_base = f'/home1/zhuwentao/projects/multi-camera/mvball_proj/output/wusi/{sequence}'
+    file = os.listdir(dir_base)
+    for f in file:
+        p1 = dir_base + f'/{f}/3d_vis'
+        p2 = dir_base + f'/{f}/image_with_projected_ball_and_poses'
+        # print(p1)
+        f1 = os.listdir(p1)
+        if len(f1) < 50:
+            print(f)
+            p2 = dir_base + f'/{f}'
+            shutil.rmtree(p2)
+            continue
         
-    # visualize = str(1)  # use which camera to visualize
-    # Recompute the parameters.
-    # rr, jac0 = cv2.Rodrigues(cameras[visualize]["r"])
-    # tvec = -np.matmul(cameras[visualize]["r"], cameras[visualize]["t"])
-    # # Project 3D points to the original video.
-    # video_path = f"../data/{args.sequence}/1.mp4"
-    # cap = cv2.VideoCapture(video_path)
-    # out_path = f'./output/wusi/ball'
-    # if not os.path.exists(out_path):
-    #     os.makedirs(out_path)
-    # out_path += f"/{args.sequence}.mp4"
-
-    # out = cv2.VideoWriter(out_path, cv2.VideoWriter.fourcc('m', 'p', '4', 'v'), 24, (2560, 1440))
-    # frameid = 0
-    # ball_pos = []
+        pics_3d = p1 + '/test_%8d_3d.jpg'
+        out_dir_3d = dir_base + f'/{f}/3d.mp4'
+        (
+            ffmpeg
+            .input(pics_3d, framerate=25)
+            .output(out_dir_3d)
+            .run()
+        )
+        for i in range(1,12):
+            pics_projected = p2 + f'/test_%8d_view_{i}.jpg'
+            out_dir_projected = dir_base + f'/{f}/view{i}.mp4'
+            (
+                ffmpeg
+                .input(pics_projected, framerate=25)
+                .output(out_dir_projected)
+                .run()
+            )
+    # f = 0
+    # vid1 = dir_base + f'/{f}/view1.mp4'
+    # vid2 = dir_base + f'/{f}/view2.mp4'
+    # out_dir_integrate = dir_base + f'/{f}/integrated.mp4'
+    # (
+    #     ffmpeg
+    #     .input(vid1)
+    #     .overlay(vid2)
+    #     .output(out_dir_integrate)
+    #     .run()
+    # )
+        
+        
+            
     
-    
-    # # res_3d = np.array(res)
-    # while (cap.isOpened()):
-    #     ret, frame = cap.read()
-    #     if not ret:
-    #         break
-    #     content = frame  # cv.cvtColor(frame, cv.COLOR_BGR2RGB)
-    #     # print(f"frameid of all is {frameid}")
-    #     # if frameid in res:
-    #     if frameid in res:
-
-    #         # print(f"frameid of draw is {frameid}\n")
-
-    #         imgpts, jac = cv2.projectPoints(res[frameid], rr, tvec, cameras[visualize]["m"], cameras[visualize]["d"])
-
-    #         # print(f"imgpts is {imgpts}")
-    #         center = (int(imgpts[0][0][0]), int(imgpts[0][0][1]))
-
-    #         if 0 <= center[0] < content.shape[1] and 0 <= center[1] < content.shape[0]:
-    #             cv2.circle(content, center, 20, (0, 0, 255), -1)
-    #         ball_pos.append([frameid + 1, int(res[frameid][0]), int(res[frameid][1]), int(res[frameid][2])])
-
-    #     out.write(content)
-    #     # cv.imshow('frame', content)
-    #     frameid += 1
-    #     if cv2.waitKey(1) & 0xFF == ord('q'):
-    #         break
-
-    # cap.release()
-    # out.release()
-
-    # # Save the results.
-    # # final_res: array with shape N*4; each frame with its [frame_id, x, y, z].
-    # final_res = np.array(ball_pos)
-
-    # np.save(f"ball_{args.sequence}.npy", final_res)
-
-
 if __name__ == '__main__':
 
     # read arguments
@@ -364,9 +442,6 @@ if __name__ == '__main__':
         info['fx'], info['fy'], info['cx'], info['cy'] = fx, fy, cx, cy
         cameras[str(cam_id)] = info
 
-    # read timestamps and match pics
-    matches, all_frames = read_and_match_timestamps(camera_ids)
-
     # load model
     device = select_device(args.device)
     half = device != 'cpu'
@@ -384,5 +459,9 @@ if __name__ == '__main__':
     resize_transform, transform = get_transform(config)
     resize_transform_tensor = torch.tensor(resize_transform, dtype=torch.float, device=device)
 
+    # read timestamps and
+    matches = match_timestamps(camera_ids)
     # run pose and ball estimate
-    cap_pics(matches, all_frames, camera_ids, resize_transform, transform)
+    cap_pic(matches, camera_ids, resize_transform, transform)
+    
+    postprocess()

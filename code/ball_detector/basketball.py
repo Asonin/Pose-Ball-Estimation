@@ -131,6 +131,7 @@ def triangulate_one_point_ransac(camera_system, points_2d_set):
     # compute the 3 nearest points
     tree = spt.cKDTree(data=points_candidate)
     min_distance = 1000000
+    center = None
     for n, point in enumerate(points_candidate):
         distances, indexs = tree.query(point, k=3)
         # print(distances[1], distances[2])
@@ -140,13 +141,16 @@ def triangulate_one_point_ransac(camera_system, points_2d_set):
 
     # choose camera
     points_use = []
-    candidates = []
+    # candidates = []
     left = []
     left_ID = []
 
     if min_distance > 2 * threshold:
-        candidates.insert(0, center)
-        return np.zeros((1, 3)), candidates
+        # if center is not None:
+            # candidates.insert(0, center)
+            # return np.zeros((1, 3)), candidates
+        # else:
+            return np.zeros((1, 3))
 
     for n, point in enumerate(points_candidate):
         if np.linalg.norm(point - center) < threshold:
@@ -184,11 +188,11 @@ def triangulate_one_point_ransac(camera_system, points_2d_set):
                     tmp2.append(left_ID[n])
             left = tmp1
             left_ID = tmp2
-            candidates.append(camera_system.find3d(candidates_use))
+            # candidates.append(camera_system.find3d(candidates_use))
         else:
             break
 
-    return points_3d, candidates
+    return points_3d
 
 
 def estimate_ball_3d(x,imglist, camera_param, opt, model, device, imgsz=640):
@@ -253,7 +257,7 @@ def estimate_ball_3d(x,imglist, camera_param, opt, model, device, imgsz=640):
     if len(current_frame.keys()) < 3:
         return None
     else:
-        recon, candidates = triangulate_one_point_ransac(build_multi_camera_system(camera_param, no_distortion=False),
+        recon = triangulate_one_point_ransac(build_multi_camera_system(camera_param, no_distortion=False),
                                                          current_frame)
         if np.all(recon == 0):
             return None
