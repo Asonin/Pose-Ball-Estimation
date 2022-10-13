@@ -275,18 +275,6 @@ def cap_pic(matches, camera_ids, resize_transform, transform):
         # print("online ids goes like:")
         # print(fid, pred.shape[0], online_ids)
         
-        if flag and recon is not None:
-            #Fc and beta for one euro filter, currently using the same arguments
-            min_cutoff = 1
-            beta = 0
-            flag = False
-            one_euro_filter = OneEuroFilter(fid, np.array(recon), min_cutoff=min_cutoff, beta=beta)
-            one_euro_filter_pose = OneEuroFilterPose(fid, np.array(online_joints), online_ids, min_cutoff=min_cutoff,beta=beta)
-        else:
-            if recon is not None:
-                recon = one_euro_filter(fid, np.array(recon))
-                online_joints = one_euro_filter_pose(fid, np.array(online_joints), online_ids)
-        
         # only save the results when there are both ball and full-size poses
         if recon is not None and len(online_ids) == args.num_people:
             recon_list[fid] = recon
@@ -313,7 +301,12 @@ def cap_pic(matches, camera_ids, resize_transform, transform):
     cnt = 0
     output_dir_pose_group = output_dir_pose + '/' + str(group_id)
     reader = Reader(camera_ids, matches, num_frames, image_size, resize_transform, transform)
+    flag_filter = True # filter instance flag
+    #Fc and beta for one euro filter, currently using the same arguments
+    min_cutoff = 1
+    beta = 0
     print("into saving process")
+    
     
     for i in range(num_frames):
         if break_flag:
@@ -330,6 +323,7 @@ def cap_pic(matches, camera_ids, resize_transform, transform):
             offset = i - prev_id
             prev_id = i
             if offset >= threshold_group: # to a new folder
+                flag_filter = True # a new filter for each sequence
                 print(f"prev_id = {prev_id}, i = {i}")
                 group_id = group_id + 1
                 cnt = 0
@@ -340,6 +334,15 @@ def cap_pic(matches, camera_ids, resize_transform, transform):
             #     os.makedirs(prefix)
             # print('--------------')
             # print(pose_recon_list[i])
+            
+            if flag_filter:
+                flag_filter = False
+                one_euro_filter = OneEuroFilter(i, np.array(recon_list[i]), min_cutoff=min_cutoff, beta=beta)
+                one_euro_filter_pose = OneEuroFilterPose(i, np.array(pose_recon_list[i][1]), pose_recon_list[i][0], min_cutoff=min_cutoff,beta=beta)
+            else:
+                recon_list[i] = one_euro_filter(i, np.array(recon_list[i]))
+                pose_recon_list[i][1] = one_euro_filter_pose(i, np.array(pose_recon_list[i][1]), pose_recon_list[i][0])
+        
             save_3d_images(config, recon_list[i], pose_recon_list[i][1], prefix, pose_recon_list[i][0])
             save_image_with_projected_ball_and_poses(config, pose_img_list, recon_list[i], np.expand_dims(np.array(pose_recon_list[i][1]), 0), meta, prefix, our_cameras, resize_transform, pose_recon_list[i][0])
             cnt = cnt + 1  

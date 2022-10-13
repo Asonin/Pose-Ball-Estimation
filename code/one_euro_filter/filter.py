@@ -53,7 +53,6 @@ class OneEuroFilter:
         self.t_prev = t
         
         # offset = x_hat - x
-        
 
         return x_hat
 
@@ -68,9 +67,9 @@ class OneEuroFilterPose(OneEuroFilter):
         self.ids = ids
 
         # Previous values.
-        self.x_prev = np.zeros((50,3))
-        self.dx_prev = np.zeros((50,3))
-        self.t_prev = np.zeros((50,3))
+        self.x_prev = np.zeros((100,3))
+        self.dx_prev = np.zeros((100,3))
+        self.t_prev = np.zeros((100,3))
         # print(x0)
         for i in range(len(ids)):
             id = ids[i]
@@ -187,7 +186,7 @@ def do_interpolation(recon_list, pose_list):
 
 def slide_window(recon_list, pose_recon_list):
     # you shall set the threshold here, it determines the distance for a burst
-    threshold_ball = 500
+    threshold_ball = 150
     threshold_pose = 400
 
     length = len(recon_list)
