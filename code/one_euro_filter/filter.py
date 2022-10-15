@@ -186,7 +186,7 @@ def do_interpolation(recon_list, pose_list):
 
 def slide_window(recon_list, pose_recon_list):
     # you shall set the threshold here, it determines the distance for a burst
-    threshold_ball = 150
+    threshold_ball = 100
     threshold_pose = 400
 
     length = len(recon_list)

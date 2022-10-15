@@ -35,89 +35,11 @@ from tracker.multitracker import JDETracker
 
 # modules for one-euro filter
 from one_euro_filter.filter import OneEuroFilter, slide_window, OneEuroFilterPose, do_interpolation
-        
+ 
+#modules for data_loader
+from data_loader.Reader import Reader       
 
-class Reader():
-    def __init__(self, camera_ids, matches, aligned_len, image_size, resize_transform, transform):
-        self.resize_transform = resize_transform
-        self.transform = transform
-        self.image_size = image_size
-        self.frame_num = {}
-        self.aligned_len = aligned_len
-        self.videocap = {}
-        self.camera_ids = camera_ids
-        self.matches = matches
-        self.prev = {} # save at most five pics
-        self.prev_id = {}
-        self.flag = False
-        for cam_id in camera_ids:
-            self.prev_id[cam_id] = []
-            self.frame_num[cam_id] = 0
-            self.prev[cam_id] = {}
-            self.videocap[cam_id] = cv2.VideoCapture('../out/%s/%s.mp4' % (args.sequence, cam_id))
-    
-    def __call__(self, fid):
-        img_list = []
-        pose_img_list = []
-        
-        for k, cam_id in enumerate(self.camera_ids):
-            ori_fid = self.matches[fid, k]
-            # if cam_id == 10:
-            #     print(f"ori_fid = {ori_fid}")
-            while(1):
-            # while(self.frame_num[cam_id] != ori_fid):
-                # if cam_id == 10:
-                #     print(f"now the id is {self.frame_num[cam_id]}")
-                if not self.videocap[cam_id].isOpened():
-                    print(f"cideo_cap {cam_id} closed")
-                    break
-                ret, frame = self.videocap[cam_id].read()
-                if not ret:
-                    print("at the end of the video_file")
-                    self.flag = True
-                    break
-                
-                self.frame_num[cam_id] += 1
-                cur_id = self.frame_num[cam_id]
-                 
-                if cur_id > ori_fid: 
-                    # print(f"using past frame of cam{cam_id} at {cur_id}")
-                    # print(f"ori_fid = {ori_fid}")
-                    # print(cur_id)
-                    img_list.append(self.prev[cam_id][ori_fid])
-                    pose_img = cv2.cvtColor(self.prev[cam_id][ori_fid], cv2.COLOR_BGR2RGB)
-                    
-                elif cur_id == ori_fid:
-                    img_list.append(frame)
-                    pose_img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                
-                self.prev[cam_id][cur_id] = frame
-                self.prev_id[cam_id].append(cur_id)
-                # print(self.prev_id[cam_id])
-                if len(self.prev_id[cam_id]) == 30:
-                    self.prev[cam_id].pop(self.prev_id[cam_id][0])
-                    del self.prev_id[cam_id][0]
-                
-                if cur_id < ori_fid: # not found yet
-                    continue
-                    
-                # require extra transformation for poee estimation
-                pose_img = cv2.warpAffine(pose_img, self.resize_transform, (int(self.image_size[0]), 
-                                        int(self.image_size[1])), flags=cv2.INTER_LINEAR)
-                pose_img = self.transform(pose_img)
-                pose_img_list.append(pose_img)
-                break
-                         
-        pose_img_list = torch.stack(pose_img_list, dim=0).unsqueeze(0)
-        
-        return img_list, pose_img_list, self.flag 
-    
-    def __del__(self):
-        for key, value in self.videocap.items():
-            print(f"videocap{key} released")
-            value.release()
-            
-         
+
 def within(idx, n_frames):
     for i in range(len(idx)):
         if idx[i] >= n_frames[i]:
@@ -206,7 +128,7 @@ def cap_pic(matches, camera_ids, resize_transform, transform):
     # Read time-aligned frames
     num_frames = len(matches)
     image_size = config.NETWORK.IMAGE_SIZE
-    reader = Reader(camera_ids, matches, num_frames, image_size, resize_transform, transform)
+    reader = Reader(camera_ids, matches, num_frames, image_size, resize_transform, transform, args)
     break_flag = False
     
     if args.breakpoint == -1:
@@ -298,9 +220,12 @@ def cap_pic(matches, camera_ids, resize_transform, transform):
     prev_id = 0
     threshold_group = 10
     group_id = 0
+    ball_pos = []
+    pose_id = []
+    poses = []
     cnt = 0
     output_dir_pose_group = output_dir_pose + '/' + str(group_id)
-    reader = Reader(camera_ids, matches, num_frames, image_size, resize_transform, transform)
+    reader = Reader(camera_ids, matches, num_frames, image_size, resize_transform, transform, args)
     flag_filter = True # filter instance flag
     #Fc and beta for one euro filter, currently using the same arguments
     min_cutoff = 1
@@ -323,10 +248,21 @@ def cap_pic(matches, camera_ids, resize_transform, transform):
             offset = i - prev_id
             prev_id = i
             if offset >= threshold_group: # to a new folder
+                ball_dir = output_dir_pose_group + '/ball_pos.npy'
+                pose_dir = output_dir_pose_group + '/poses.npy'
+                pose_id_dir = output_dir_pose_group + '/pose_id.npy'
+                
+                np.save(ball_dir, ball_pos)
+                np.save(pose_dir, np.array(poses).reshape(1,-1))
+                np.save(pose_id_dir, pose_id)
+                
                 flag_filter = True # a new filter for each sequence
-                print(f"prev_id = {prev_id}, i = {i}")
+                # print(f"prev_id = {prev_id}, i = {i}")
                 group_id = group_id + 1
                 cnt = 0
+                ball_pos = []
+                poses = []
+                pose_id = []
                 output_dir_pose_group = output_dir_pose + '/' + str(group_id)
             
             prefix = '{}_{:08}'.format(os.path.join(output_dir_pose_group, 'test'), cnt)
@@ -342,11 +278,21 @@ def cap_pic(matches, camera_ids, resize_transform, transform):
             else:
                 recon_list[i] = one_euro_filter(i, np.array(recon_list[i]))
                 pose_recon_list[i][1] = one_euro_filter_pose(i, np.array(pose_recon_list[i][1]), pose_recon_list[i][0])
-        
+            ball_pos.append(recon_list[i])
+            pose_id.append(pose_recon_list[i][0])
+            poses.append(pose_recon_list[i][1])
+            
             save_3d_images(config, recon_list[i], pose_recon_list[i][1], prefix, pose_recon_list[i][0])
             save_image_with_projected_ball_and_poses(config, pose_img_list, recon_list[i], np.expand_dims(np.array(pose_recon_list[i][1]), 0), meta, prefix, our_cameras, resize_transform, pose_recon_list[i][0])
             cnt = cnt + 1  
-        pbar.update(1)  
+        pbar.update(1)
+         
+    ball_dir = output_dir_pose_group + '/ball_pos.npy'
+    pose_dir = output_dir_pose_group + '/poses.npy'
+    pose_id_dir = output_dir_pose_group + '/pose_id.npy'
+    np.save(ball_dir, ball_pos)
+    np.save(pose_dir, np.array(poses).reshape(1,-1))
+    np.save(pose_id_dir, pose_id)
     reader.__del__()
  
  
@@ -383,17 +329,6 @@ def postprocess():
                 .output(out_dir_projected)
                 .run()
             )
-    # f = 0
-    # vid1 = dir_base + f'/{f}/view1.mp4'
-    # vid2 = dir_base + f'/{f}/view2.mp4'
-    # out_dir_integrate = dir_base + f'/{f}/integrated.mp4'
-    # (
-    #     ffmpeg
-    #     .input(vid1)
-    #     .overlay(vid2)
-    #     .output(out_dir_integrate)
-    #     .run()
-    # )
         
         
             
