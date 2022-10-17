@@ -202,98 +202,11 @@ def cap_pic(matches, camera_ids, resize_transform, transform):
             recon_list[fid] = recon
             pose_recon_list[fid] = [online_ids, online_joints]
         pbar.update(1)
+        prefix = '{}_{:08}'.format(os.path.join(output_dir_pose, 'test'), fid)
+        save_3d_images(config, recon, online_joints, prefix, online_ids)
+        save_image_with_projected_ball_and_poses(config, pose_img_list, recon, np.expand_dims(np.array(online_joints), 0), meta, prefix, our_cameras, resize_transform, online_ids)
             
-    reader.__del__()
-    if args.breakpoint == -1:
-        break_flag == False
-        print("no breakpoints, saving the whole sequence")
-        pbar = tqdm(total=num_frames)
-    else:
-        break_flag = True
-        print(f"the breakpoint's at {args.breakpoint}")
-        pbar = tqdm(total=args.breakpoint)
-        
-    # we insert a window filter to clean the outlier
-    recon_list, pose_recon_list = slide_window(recon_list, pose_recon_list)
-    recon_list, pose_recon_list = do_interpolation(recon_list, pose_recon_list)
-    
-    prev_id = 0
-    threshold_group = 10
-    group_id = 0
-    ball_pos = []
-    pose_id = []
-    poses = []
-    cnt = 0
-    output_dir_pose_group = output_dir_pose + '/' + str(group_id)
-    reader = Reader(camera_ids, matches, num_frames, image_size, resize_transform, transform, args)
-    flag_filter = True # filter instance flag
-    #Fc and beta for one euro filter, currently using the same arguments
-    min_cutoff = 1
-    beta = 0
-    print("into saving process")
-    if not os.path.exists(output_dir_pose_group):
-        os.makedirs(output_dir_pose_group)
-    
-    for i in range(num_frames):
-        if break_flag:
-            if i > args.breakpoint:
-                print(f"ending inference at fid = {fid}")
-                break
             
-        img_list, pose_img_list, flag = reader(i)
-        if flag:
-            print(f"at the end of video, ending at {fid}")
-            break
-        # see if this frame is in recon_list, save image
-        if i in recon_list.keys():
-            offset = i - prev_id
-            prev_id = i
-            if offset >= threshold_group: # to a new folder
-                ball_dir = output_dir_pose_group + '/ball_pos.npy'
-                pose_dir = output_dir_pose_group + '/poses.npy'
-                pose_id_dir = output_dir_pose_group + '/pose_id.npy'
-                
-                np.save(ball_dir, ball_pos)
-                np.save(pose_dir, np.array(poses).reshape(1,-1))
-                np.save(pose_id_dir, pose_id)
-                
-                flag_filter = True # a new filter for each sequence
-                # print(f"prev_id = {prev_id}, i = {i}")
-                group_id = group_id + 1
-                cnt = 0
-                ball_pos = []
-                poses = []
-                pose_id = []
-                output_dir_pose_group = output_dir_pose + '/' + str(group_id)
-            
-            prefix = '{}_{:08}'.format(os.path.join(output_dir_pose_group, 'test'), cnt)
-            # if not os.path.exists(prefix):
-            #     os.makedirs(prefix)
-            # print('--------------')
-            # print(pose_recon_list[i])
-            
-            if flag_filter:
-                flag_filter = False
-                one_euro_filter = OneEuroFilter(i, np.array(recon_list[i]), min_cutoff=min_cutoff, beta=beta)
-                one_euro_filter_pose = OneEuroFilterPose(i, np.array(pose_recon_list[i][1]), pose_recon_list[i][0], min_cutoff=min_cutoff,beta=beta)
-            else:
-                recon_list[i] = one_euro_filter(i, np.array(recon_list[i]))
-                pose_recon_list[i][1] = one_euro_filter_pose(i, np.array(pose_recon_list[i][1]), pose_recon_list[i][0])
-            ball_pos.append(recon_list[i])
-            pose_id.append(pose_recon_list[i][0])
-            poses.append(pose_recon_list[i][1])
-            
-            save_3d_images(config, recon_list[i], pose_recon_list[i][1], prefix, pose_recon_list[i][0])
-            save_image_with_projected_ball_and_poses(config, pose_img_list, recon_list[i], np.expand_dims(np.array(pose_recon_list[i][1]), 0), meta, prefix, our_cameras, resize_transform, pose_recon_list[i][0])
-            cnt = cnt + 1  
-        pbar.update(1)
-         
-    ball_dir = output_dir_pose_group + '/ball_pos.npy'
-    pose_dir = output_dir_pose_group + '/poses.npy'
-    pose_id_dir = output_dir_pose_group + '/pose_id.npy'
-    np.save(ball_dir, ball_pos)
-    np.save(pose_dir, np.array(poses).reshape(1,-1))
-    np.save(pose_id_dir, pose_id)
     reader.__del__()
  
  
@@ -301,29 +214,21 @@ def postprocess():
     sequence = args.sequence
 
     dir_base = f'/home1/zhuwentao/projects/multi-camera/mvball_proj/output/wusi/{sequence}'
-    file = os.listdir(dir_base)
-    for f in file:
-        p1 = dir_base + f'/{f}/3d_vis'
-        p2 = dir_base + f'/{f}/image_with_projected_ball_and_poses'
-        # print(p1)
-        f1 = os.listdir(p1)
-        if len(f1) < 50:
-            # print(f)
-            p2 = dir_base + f'/{f}'
-            shutil.rmtree(p2)
-            continue
+    p1 = dir_base + f'/3d_vis'
+    p2 = dir_base + f'/image_with_projected_ball_and_poses'
+    
         
-        pics_3d = p1 + '/test_%8d_3d.jpg'
-        out_dir_3d = dir_base + f'/{f}/3d.mp4'
-        (
+    pics_3d = p1 + '/test_%8d_3d.jpg'
+    out_dir_3d = dir_base + f'/3d.mp4'
+    (
             ffmpeg
             .input(pics_3d, framerate=25)
             .output(out_dir_3d)
             .run()
-        )
-        for i in range(1,12):
+    )
+    for i in range(1,12):
             pics_projected = p2 + f'/test_%8d_view_{i}.jpg'
-            out_dir_projected = dir_base + f'/{f}/view{i}.mp4'
+            out_dir_projected = dir_base + f'/view{i}.mp4'
             (
                 ffmpeg
                 .input(pics_projected, framerate=25)

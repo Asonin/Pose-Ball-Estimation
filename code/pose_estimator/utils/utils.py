@@ -165,7 +165,7 @@ def load_pose_model(config, test_model_file):
     with torch.no_grad():
         model = torch.nn.DataParallel(model.cuda(), device_ids=gpus)
         model.to(f'cuda:{model.device_ids[0]}')
-
+    torch.set_num_threads(1)
     if os.path.isfile(test_model_file):
         print("=> Successfully load the model for 3D pose estimation...")
         model.module.load_state_dict(torch.load(test_model_file, map_location=f'cuda:{model.device_ids[0]}'))
