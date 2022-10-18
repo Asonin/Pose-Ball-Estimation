@@ -6,7 +6,7 @@ serial = input('serial:')
 start = int(input('cut_start:'))
 end = int(input('cut_end:'))
 base_dir = f'/home1/zhuwentao/projects/multi-camera/mvball_proj/output/wusi/{sequence}/{serial}/'
-new_dir = f'/home1/zhuwentao/projects/multi-camera/mvball_proj/output/wusi/{sequence}/1/'
+new_dir = f'/home1/zhuwentao/projects/multi-camera/mvball_proj/output/wusi/{sequence}/0/'
 if os.path.exists(new_dir):
     print('new dir already exists')
     
