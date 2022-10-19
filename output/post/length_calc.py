@@ -1,3 +1,4 @@
+from asyncore import write
 import os
 import time
 from moviepy.editor import VideoFileClip
@@ -15,6 +16,9 @@ dir_base = f'/home1/zhuwentao/projects/multi-camera/mvball_proj/output/wusi/'
 file = os.listdir(dir_base)
 total_length = 0
 sequence_calc = {}
+# 先创建并打开一个文本文件
+f = open('legth_calc.txt', 'w')
+
 for folder in file: # e.g. 1002_2
     p = dir_base + folder + '/'
     sequences = os.listdir(p)
@@ -22,17 +26,30 @@ for folder in file: # e.g. 1002_2
     for sequence in sequences: # e.g. 1
         p1 = p + sequence + '/'
         p2 = p1 + '3d.mp4'
-        
-        # t = video_duration_2(p2)
-        # sequence_length += t
-        # total_length += t
-        if not os.path.exists(p2):
+        if os.path.exists(p2):
+            t = video_duration_2(p2)
+            sequence_length += t
+            total_length += t
+        else:
             print(p2)
-    # if folder in special:
-    #     ratio = sequence_length / 120
-    # else:
-    #     ratio = sequence_length / 180
-    # sequence_calc[folder] = [sequence_length, ratio]
-    
+    if folder in special:
+        ratio = sequence_length / 120
+    else:
+        ratio = sequence_length / 180
+    sequence_calc[folder] = [sequence_length, ratio]
+    print(folder,sequence_calc[folder])
+    f.write(str(folder)+' '+str(sequence_calc[folder])+'\n')
+
+print(total_length)
+ratio = total_length / float(17*300)
+print(ratio)
+f,write(str(total_length)+' '+str(ratio)+'\n')
+
+# 遍历字典的元素，将每项元素的key和value分拆组成字符串，注意添加分隔符和换行符
+# for k,v in sequence_calc.items():
+# 	file.write(str(k)+' '+str(v)+'\n')
+	
+# 注意关闭文件
+f.close()
     
     
