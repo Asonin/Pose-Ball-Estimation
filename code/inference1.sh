@@ -10,4 +10,13 @@
 # python run/inference_i_f.py --breakpoint=-1 --sequence=1009_12 --scene=wusi --extrinsics_path ../dataset/new_extrinsics --device 1 --conf-thres=0.4
 # python run/inference_i_f.py --breakpoint=-1 --sequence=1009_13 --scene=wusi --extrinsics_path ../dataset/new_extrinsics --device 1 --conf-thres=0.4
 # python run/inference_i_f.py --breakpoint=-1 --sequence=1009_14 --scene=wusi --extrinsics_path ../dataset/new_extrinsics --device 1 --conf-thres=0.4
-python run/inference_i_f.py --breakpoint=-1 --sequence=1009_15 --scene=wusi --extrinsics_path ../dataset/new_extrinsics --device 1 --conf-thres=0.4
+# python run/inference_i_f.py --breakpoint=-1 --sequence=1009_15 --scene=wusi --extrinsics_path ../dataset/new_extrinsics --device 1 --conf-thres=0.4
+
+for i in `seq 44`
+do
+if [ $i -gt 22 ];then 
+#     echo $i
+# fi
+    python run/inference_i_f.py --breakpoint=-1 --sequence=1021_$i --scene=wusi --extrinsics_path ../dataset/new_extrinsics --device 1 --conf-thres=0.4
+fi
+done

@@ -406,8 +406,8 @@ if __name__ == '__main__':
     resize_transform_tensor = torch.tensor(resize_transform, dtype=torch.float, device=device)
 
     # read timestamps and
-    # matches = match_timestamps(camera_ids)
+    matches = match_timestamps(camera_ids)
     # run pose and ball estimate
-    # cap_pic(matches, camera_ids, resize_transform, transform)
+    cap_pic(matches, camera_ids, resize_transform, transform)
     
     postprocess()
